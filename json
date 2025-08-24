@@ -1,1 +1,590 @@
 
+=== package.json ===
+{
+  "name": "swingalyze",
+  "private": true,
+  "version": "2.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "@tensorflow-models/pose-detection": "^3.5.0",
+    "@tensorflow/tfjs-core": "^4.20.0",
+    "@tensorflow/tfjs-converter": "^4.20.0",
+    "@tensorflow/tfjs-backend-webgl": "^4.20.0",
+    "@tensorflow/tfjs-backend-wasm": "^4.20.0"
+  }
+}
+
+=== next.config.js ===
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true
+}
+module.exports = nextConfig
+
+=== app/layout.js ===
+export const metadata = {
+  title: 'Swingalyze – Ghost + Analysis',
+  description: 'AI golf swing analysis with ghost skeleton overlay'
+}
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <body style={{ margin:0, background:'#0c0f14', color:'#e9eef4' }}>
+        <style>{`
+          :root{--bg:#0c0f14;--card:#141a22;--muted:#8ea0b3;--accent:#00ff80;--accent2:#ff7b7b}
+          *{box-sizing:border-box}
+          a{color:#dfe9f7;text-decoration:none}
+          .container{padding:18px;max-width:1280px;margin:0 auto}
+          .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+          .grid{display:grid;grid-template-columns:1fr 360px;gap:14px}
+          .card{background:var(--card);border:1px solid #1f2733;border-radius:14px;padding:14px}
+          .stage{position:relative;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#000;box-shadow:0 8px 30px rgba(0,0,0,.35);border:1px solid #1b2330}
+          video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+          .title{margin:0 0 8px}
+          .btn,.label{padding:10px 14px;border-radius:10px;border:1px solid #2a3442;background:#16202c;color:#e9eef4;cursor:pointer}
+          .btn[disabled]{opacity:.5;cursor:not-allowed}
+          input[type="range"]{width:160px}
+          .hint{font-size:12px;color:var(--muted)}
+          .tabs{display:flex;gap:8px;margin:10px 0}
+          .tab{padding:8px 12px;border-radius:999px;border:1px solid #2a3442;background:#0f1620;cursor:pointer}
+          .tab.active{background:#1a2533;border-color:#2e3c4f}
+          header.app{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+        `}</style>
+        {children}
+      </body>
+    </html>
+  )
+}
+
+=== app/page.tsx ===
+'use client'
+
+import React, { useState } from 'react'
+import Overlay from '../components/Overlay'
+import SideBySide from '../components/SideBySide'
+import Insights from '../components/Insights'
+import type { Analysis } from '../lib/analyzer'
+
+export default function Page(){
+  const [view, setView] = useState<'overlay'|'side'>('overlay')
+  const [analysis, setAnalysis] = useState<Analysis|null>(null)
+
+  return (
+    <div className="container">
+      <header className="app">
+        <div style={{fontWeight:700,fontSize:20}}>Swingalyze</div>
+        <nav className="row" style={{gap:8}}>
+          <button className={'tab ' + (view==='overlay'?'active':'')} onClick={()=>setView('overlay')}>Overlay</button>
+          <button className={'tab ' + (view==='side'?'active':'')} onClick={()=>setView('side')}>Side-by-Side</button>
+          <a className="tab" href="/compare">Open /compare</a>
+        </nav>
+      </header>
+
+      <p className="hint" style={{margin:'0 0 10px'}}>Upload (or Camera). Left: your swing with ghost overlay (optionally reference). Right: analysis metrics, faults & drills.</p>
+
+      <div className="grid">
+        <div className="card">
+          {view==='overlay'
+            ? <Overlay onAnalysis={setAnalysis}/>
+            : <SideBySide onAnalysis={setAnalysis}/>}
+        </div>
+        <div className="card">
+          <Insights analysis={analysis}/>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+=== app/compare/page.tsx ===
+'use client'
+import React, { useState } from 'react'
+import SideBySide from '../../components/SideBySide'
+import Insights from '../../components/Insights'
+import type { Analysis } from '../../lib/analyzer'
+
+export default function ComparePage(){
+  const [analysis, setAnalysis] = useState<Analysis|null>(null)
+  return (
+    <div className="container">
+      <header className="app">
+        <a href="/" style={{fontWeight:700,fontSize:20}}>← Swingalyze</a>
+      </header>
+      <div className="grid">
+        <div className="card">
+          <SideBySide onAnalysis={setAnalysis}/>
+        </div>
+        <div className="card">
+          <Insights analysis={analysis}/>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+=== components/Insights.tsx ===
+'use client'
+import React from 'react'
+import type { Analysis } from '../lib/analyzer'
+
+export default function Insights({ analysis }: { analysis: Analysis | null }){
+  const summary = analysis?.summary
+  const faults = analysis?.faults ?? []
+
+  return (
+    <div>
+      <div className="row" style={{justifyContent:'space-between', marginBottom:6}}>
+        <h3 className="title" style={{margin:0}}>Insights</h3>
+        <span className="hint">{summary ? `${summary.frames} frames · ${summary.fps} fps` : '—'}</span>
+      </div>
+
+      <div className="hint" style={{marginBottom:8}}>
+        Tempo: <b>{summary?.tempo?.ratio ? summary.tempo.ratio.toFixed(2) : '—'}:1</b>
+        {' '} (back {summary?.tempo?.backMs||0}ms, down {summary?.tempo?.downMs||0}ms)
+        {' '} · X-factor @ Top: <b>{summary ? Math.round(summary.xFactorDeg) : 0}°</b>
+      </div>
+
+      {!faults.length ? (
+        <div style={{padding:10,border:'1px solid #2b3a4b',borderRadius:10,background:'#0e141d',color:'#6ee7a9'}}>
+          No major faults detected (heuristic). Keep swinging!
+        </div>
+      ) : (
+        <ul style={{listStyle:'none', padding:0, margin:0}}>
+          {faults.map((f,i)=>(
+            <li key={i} style={{padding:10,border:'1px solid #2b3a4b',borderRadius:10,background:'#0e141d',marginBottom:8}}>
+              <div className="row" style={{justifyContent:'space-between'}}>
+                <b>{f.title}</b>
+                <span style={{padding:'2px 8px', borderRadius:999, fontSize:11,
+                  border:'1px solid', borderColor: f.severity==='bad' ? '#5a3434' : '#514528',
+                  background: f.severity==='bad' ? '#261313' : '#261f0f',
+                  color: f.severity==='bad' ? '#ff7b7b' : '#ffd166'}}>{f.severity.toUpperCase()}</span>
+              </div>
+              <div style={{fontSize:12,opacity:.9,marginTop:4}}>{f.detail}</div>
+              <div style={{fontSize:11,opacity:.7,marginTop:2}}>~{Math.round(f.timeMs)}ms · {f.phase}</div>
+              {!!(f.drills?.length) && (
+                <div style={{marginTop:8}}>
+                  <div className="hint" style={{marginBottom:4}}>Drills & tips:</div>
+                  <ul style={{listStyle:'disc', margin:'0 0 0 18px', padding:0}}>
+                    {f.drills.map((d,j)=>(<li key={j} style={{marginBottom:4}}><b style={{fontSize:12}}>{d.name}</b> — <span style={{fontSize:12,opacity:.95}}>{d.tip}</span></li>))}
+                  </ul>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+=== components/Overlay.tsx ===
+'use client'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import * as poseDetection from '@tensorflow-models/pose-detection'
+import { initTF } from '../lib/tf-init'
+import { analyzeFrame, emptyAnalysis, type Analysis } from '../lib/analyzer'
+
+const EDGES:[string,string][]= [
+  ['left_eye','right_eye'],['nose','left_eye'],['nose','right_eye'],
+  ['left_shoulder','right_shoulder'],
+  ['left_shoulder','left_elbow'],['left_elbow','left_wrist'],
+  ['right_shoulder','right_elbow'],['right_elbow','right_wrist'],
+  ['left_shoulder','left_hip'],['right_shoulder','right_hip'],
+  ['left_hip','right_hip'],
+  ['left_hip','left_knee'],['left_knee','left_ankle'],
+  ['right_hip','right_knee'],['right_knee','right_ankle']
+]
+
+export default function Overlay({ onAnalysis }:{ onAnalysis:(a:Analysis)=>void }){
+  const vRef = useRef<HTMLVideoElement|null>(null)
+  const rRef = useRef<HTMLVideoElement|null>(null) // hidden reference
+  const cRef = useRef<HTMLCanvasElement|null>(null)
+  const dRef = useRef<poseDetection.PoseDetector|null>(null)
+  const rdRef = useRef<poseDetection.PoseDetector|null>(null)
+  const rafRef = useRef<number>(0)
+
+  const [status,setStatus]=useState('Loading model…')
+  const [backend,setBackend]=useState('')
+  const [busy,setBusy]=useState(true)
+
+  const [userColor,setUserColor]=useState('#00ff80')
+  const [refColor,setRefColor]=useState('#ff7b7b')
+  const [uAlpha,setUAlpha]=useState(0.9)
+  const [rAlpha,setRAlpha]=useState(0.6)
+  const [mirror,setMirror]=useState(false)
+  const [showRef,setShowRef]=useState(true)
+  const [refUrl,setRefUrl]=useState('/pro.mp4')
+  const [offset,setOffset]=useState(0)
+  const [timeScale,setTimeScale]=useState(1)
+
+  const [analysis,setAnalysis]=useState<Analysis>(emptyAnalysis())
+
+  useEffect(()=>{
+    let cancel=false
+    ;(async()=>{
+      setStatus('Selecting TF backend…')
+      const b = await initTF().catch(()=> 'wasm')
+      if (cancel) return
+      setBackend(b||''); setBusy(true)
+      setStatus('Loading MoveNet…')
+      const d = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet,{modelType:'lightning'})
+      const rd = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet,{modelType:'lightning'})
+      if (cancel) return
+      dRef.current=d; rdRef.current=rd; setBusy(false); setStatus('Model ready ✓')
+    })()
+    return ()=>{ cancel=true }
+  },[])
+
+  const fit=useCallback(()=>{
+    const v=vRef.current, c=cRef.current
+    if(!v||!c||!v.videoWidth||!v.videoHeight) return
+    if(c.width!==v.videoWidth||c.height!==v.videoHeight){ c.width=v.videoWidth; c.height=v.videoHeight }
+  },[])
+
+  const draw=(ctx:CanvasRenderingContext2D, c:HTMLCanvasElement, kp:any[], color:string, alpha:number)=>{
+    ctx.lineWidth=Math.max(2,c.width/640*3); ctx.strokeStyle=color; ctx.globalAlpha=alpha
+    for(const [a,b] of EDGES){
+      const p1=kp.find((k:any)=>k.name===a), p2=kp.find((k:any)=>k.name===b)
+      if(p1?.score>0.35 && p2?.score>0.35){ ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke() }
+    }
+    ctx.globalAlpha=1
+  }
+
+  const loop=useCallback(async()=>{
+    const v=vRef.current, c=cRef.current, d=dRef.current
+    if(!v||!c||!d||v.readyState<2){ rafRef.current=requestAnimationFrame(loop); return }
+    fit()
+    const ctx=c.getContext('2d')!; ctx.clearRect(0,0,c.width,c.height)
+    if (mirror){ ctx.save(); ctx.translate(c.width,0); ctx.scale(-1,1) }
+
+    try{
+      const poses=await d.estimatePoses(v,{flipHorizontal:mirror}); const p=poses?.[0]
+      if (p){ draw(ctx,c,p.keypoints,userColor,uAlpha); const tMs=Math.round(v.currentTime*1000); const next=analyzeFrame(analysis,p,tMs); setAnalysis(next); if(next.frames.length%5===0) onAnalysis(next) }
+    }catch{}
+
+    if (showRef && rdRef.current && rRef.current?.readyState!>=2){
+      const rv = rRef.current!
+      const tUser = v.currentTime*1000
+      const target = Math.max(0, Math.min(rv.duration*1000 - 30, (tUser * timeScale) + offset))
+      if (Math.abs(rv.currentTime*1000 - target) > 40) rv.currentTime = target/1000
+      try{ const r=await rdRef.current.estimatePoses(rv,{flipHorizontal:false}); if(r?.[0]) draw(ctx,c,r[0].keypoints,refColor,rAlpha) }catch{}
+    }
+
+    if (mirror) ctx.restore()
+    rafRef.current=requestAnimationFrame(loop)
+  },[fit, mirror, userColor, uAlpha, refColor, rAlpha, showRef, offset, timeScale, analysis, onAnalysis])
+
+  useEffect(()=>{
+    const v=vRef.current
+    if(!v) return
+    const onPlay=()=>{ cancelAnimationFrame(rafRef.current); rafRef.current=requestAnimationFrame(loop) }
+    const onPause=()=>cancelAnimationFrame(rafRef.current)
+    v.addEventListener('play',onPlay); v.addEventListener('pause',onPause); v.addEventListener('ended',onPause)
+    return ()=>{ v.removeEventListener('play',onPlay); v.removeEventListener('pause',onPause); v.removeEventListener('ended',onPause); cancelAnimationFrame(rafRef.current) }
+  },[loop])
+
+  const onFile=(e:React.ChangeEvent<HTMLInputElement>)=>{
+    const f=e.target.files?.[0]; if(!f) return
+    const url=URL.createObjectURL(f)
+    const v=vRef.current!; v.srcObject=null as any; v.src=url; v.muted=true; v.playsInline=true
+    setAnalysis(emptyAnalysis()); v.onloadedmetadata=()=>v.play().catch(()=>setStatus('Press ▶'))
+  }
+  const startCamera=async()=>{
+    try{
+      const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false})
+      const v=vRef.current!; v.src=''; v.srcObject=s as any; v.muted=true; v.playsInline=true
+      setAnalysis(emptyAnalysis()); await v.play()
+    }catch{ setStatus('Allow camera permissions') }
+  }
+  const loadRef=()=>{
+    const rv=rRef.current!; rv.src=refUrl; rv.crossOrigin='anonymous'; rv.loop=true; rv.muted=true; rv.playsInline=true; rv.play().catch(()=>{})
+  }
+
+  return (
+    <div>
+      <div className="row" style={{marginBottom:10}}>
+        <label className="label">Upload<input type="file" accept="video/*" onChange={onFile} style={{display:'none'}}/></label>
+        <button className="btn" onClick={startCamera} disabled={busy}>Camera</button>
+        <label className="row hint"><input type="checkbox" checked={mirror} onChange={e=>setMirror(e.target.checked)}/> Mirror</label>
+        <span className="hint">{status} {backend && `(${backend})`}</span>
+      </div>
+
+      <div className="row" style={{marginBottom:8}}>
+        <label className="row hint">User Color <input type="color" value={userColor} onChange={e=>setUserColor(e.target.value)}/></label>
+        <label className="row hint">User Opacity <input type="range" min="0.2" max="1" step="0.05" value={uAlpha} onChange={e=>setUAlpha(parseFloat(e.target.value))}/></label>
+        <label className="row hint"><input type="checkbox" checked={showRef} onChange={e=>setShowRef(e.target.checked)}/> Show Reference</label>
+        <label className="row hint">Ref Color <input type="color" value={refColor} onChange={e=>setRefColor(e.target.value)}/></label>
+        <label className="row hint">Ref Opacity <input type="range" min="0.1" max="1" step="0.05" value={rAlpha} onChange={e=>setRAlpha(parseFloat(e.target.value))}/></label>
+      </div>
+
+      <div className="row" style={{marginBottom:10}}>
+        <input style={{flex:'1 1 360px',padding:10,borderRadius:10,border:'1px solid #2a3442',background:'#0f1620',color:'#dfe9f7'}}
+               placeholder="Reference video URL (https) or /pro.mp4"
+               value={refUrl} onChange={e=>setRefUrl(e.target.value)} />
+        <button className="btn" onClick={loadRef}>Load Reference</button>
+        <label className="row hint">Offset <input type="range" min="-1500" max="1500" step="50" value={offset} onChange={e=>setOffset(parseInt(e.target.value))}/><span className="hint">{offset} ms</span></label>
+        <label className="row hint">Time Scale <input type="range" min="0.5" max="1.5" step="0.05" value={timeScale} onChange={e=>setTimeScale(parseFloat(e.target.value))}/><span className="hint">{timeScale.toFixed(2)}×</span></label>
+      </div>
+
+      <div className="stage">
+        <video ref={vRef} controls playsInline muted />
+        <canvas ref={cRef} />
+        <video ref={rRef} style={{display:'none'}} playsInline muted />
+      </div>
+    </div>
+  )
+}
+
+=== components/SideBySide.tsx ===
+'use client'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import * as poseDetection from '@tensorflow-models/pose-detection'
+import { initTF } from '../lib/tf-init'
+import { analyzeFrame, emptyAnalysis, type Analysis } from '../lib/analyzer'
+
+const EDGES:[string,string][] = [
+  ['left_eye','right_eye'],['nose','left_eye'],['nose','right_eye'],
+  ['left_shoulder','right_shoulder'],
+  ['left_shoulder','left_elbow'],['left_elbow','left_wrist'],
+  ['right_shoulder','right_elbow'],['right_elbow','right_wrist'],
+  ['left_shoulder','left_hip'],['right_shoulder','right_hip'],
+  ['left_hip','right_hip'],
+  ['left_hip','left_knee'],['left_knee','left_ankle'],
+  ['right_hip','right_knee'],['right_knee','right_ankle']
+]
+
+function draw(ctx:CanvasRenderingContext2D, c:HTMLCanvasElement, kp:any[], color:string, alpha:number){
+  ctx.lineWidth=Math.max(2,c.width/640*3); ctx.strokeStyle=color; ctx.globalAlpha=alpha
+  for(const [a,b] of EDGES){
+    const p1=kp.find((k:any)=>k.name===a), p2=kp.find((k:any)=>k.name===b)
+    if(p1?.score>0.35 && p2?.score>0.35){ ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.stroke() }
+  }
+  ctx.globalAlpha=1
+}
+
+export default function SideBySide({ onAnalysis }:{ onAnalysis:(a:Analysis)=>void }){
+  const uVid=useRef<HTMLVideoElement|null>(null), uCan=useRef<HTMLCanvasElement|null>(null)
+  const rVid=useRef<HTMLVideoElement|null>(null), rCan=useRef<HTMLCanvasElement|null>(null)
+  const detU=useRef<poseDetection.PoseDetector|null>(null), detR=useRef<poseDetection.PoseDetector|null>(null)
+  const rafRef=useRef<number>(0)
+  const [busy,setBusy]=useState(true)
+  const [uColor,setUColor]=useState('#00ff80'), [rColor,setRColor]=useState('#ff7b7b')
+  const [uAlpha,setUAlpha]=useState(0.9), [rAlpha,setRAlpha]=useState(0.7)
+  const [refUrl,setRefUrl]=useState('/pro.mp4')
+  const [analysis,setAnalysis]=useState<Analysis>(emptyAnalysis())
+
+  useEffect(()=>{ let cancelled=false; (async()=>{
+    await initTF().catch(()=>initTF())
+    const d1=await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet,{modelType:'lightning'})
+    const d2=await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet,{modelType:'lightning'})
+    if(!cancelled){ detU.current=d1; detR.current=d2; setBusy(false) }
+  })(); return()=>{ cancelled=true } },[])
+
+  const fit=(v:HTMLVideoElement|null,c:HTMLCanvasElement|null)=>{ if(!v||!c||!v.videoWidth||!v.videoHeight) return; if(c.width!==v.videoWidth||c.height!==v.videoHeight){ c.width=v.videoWidth; c.height=v.videoHeight } }
+
+  const loop=useCallback(async()=>{
+    const v=uVid.current, c=uCan.current, d=detU.current
+    const rv=rVid.current, rc=rCan.current, dr=detR.current
+    if(!v||!c||!d||v.readyState<2){ rafRef.current=requestAnimationFrame(loop); return }
+    fit(v,c); const ctx=c.getContext('2d')!; ctx.clearRect(0,0,c.width,c.height)
+    try{ const poses=await d.estimatePoses(v); if(poses?.[0]){ draw(ctx,c,poses[0].keypoints,uColor,uAlpha); const tMs=Math.round(v.currentTime*1000); const next=analyzeFrame(analysis,poses[0],tMs); if(next.frames.length%5===0) onAnalysis(next); setAnalysis(next) } }catch{}
+    if(rv&&rc&&dr&&rv.readyState>=2){ fit(rv,rc); const rctx=rc.getContext('2d')!; rctx.clearRect(0,0,rc.width,rc.height); try{ const poses=await dr.estimatePoses(rv); if(poses?.[0]) draw(rctx,rc,poses[0].keypoints,rColor,rAlpha) }catch{} }
+    rafRef.current=requestAnimationFrame(loop)
+  },[uColor,rColor,uAlpha,rAlpha,analysis,onAnalysis])
+
+  useEffect(()=>{ const v=uVid.current; if(!v) return; const onPlay=()=>{ cancelAnimationFrame(rafRef.current); rafRef.current=requestAnimationFrame(loop) }; const onPause=()=>cancelAnimationFrame(rafRef.current); v.addEventListener('play',onPlay); v.addEventListener('pause',onPause); v.addEventListener('ended',onPause); return()=>{ v.removeEventListener('play',onPlay); v.removeEventListener('pause',onPause); v.removeEventListener('ended',onPause); cancelAnimationFrame(rafRef.current) } },[loop])
+
+  const onFile=(e:React.ChangeEvent<HTMLInputElement>)=>{ const f=e.target.files?.[0]; if(!f) return; const url=URL.createObjectURL(f); const v=uVid.current!; v.srcObject=null as any; v.src=url; v.muted=true; v.playsInline=true; setAnalysis(emptyAnalysis()); v.onloadedmetadata=()=>v.play().catch(()=>{}) }
+  const startCamera=async()=>{ const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false}); const v=uVid.current!; v.src=''; v.srcObject=s as any; v.muted=true; v.playsInline=true; setAnalysis(emptyAnalysis()); v.play().catch(()=>{}) }
+  const loadRef=()=>{ const rv=rVid.current!; rv.src=refUrl; rv.crossOrigin='anonymous'; rv.loop=true; rv.muted=true; rv.playsInline=true; rv.play().catch(()=>{}) }
+
+  return (
+    <div>
+      <div className="row" style={{marginBottom:10}}>
+        <label className="label">Upload<input type="file" accept="video/*" onChange={onFile} style={{display:'none'}}/></label>
+        <button className="btn" onClick={startCamera} disabled={busy}>Camera</button>
+        <span className="hint">{busy?'Loading model…':'Model ready'}</span>
+      </div>
+      <div className="row" style={{marginBottom:8}}>
+        <label className="row hint">User Color <input type="color" value={uColor} onChange={e=>setUColor(e.target.value)}/></label>
+        <label className="row hint">User Opacity <input type="range" min="0.2" max="1" step="0.05" value={uAlpha} onChange={e=>setUAlpha(parseFloat(e.target.value))}/></label>
+        <label className="row hint">Ref Color <input type="color" value={rColor} onChange={e=>setRColor(e.target.value)}/></label>
+        <label className="row hint">Ref Opacity <input type="range" min="0.1" max="1" step="0.05" value={rAlpha} onChange={e=>setRAlpha(parseFloat(e.target.value))}/></label>
+      </div>
+      <div className="row" style={{marginBottom:10}}>
+        <input style={{flex:'1 1 320px',padding:10,borderRadius:10,border:'1px solid #2a3442',background:'#0f1620',color:'#dfe9f7'}}
+               placeholder="Reference video URL or /pro.mp4"
+               value={refUrl} onChange={e=>setRefUrl(e.target.value)} />
+        <button className="btn" onClick={loadRef}>Load Ref</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+        <div className="stage"><video ref={uVid} controls playsInline muted/><canvas ref={uCan}/></div>
+        <div className="stage"><video ref={rVid} controls playsInline muted/><canvas ref={rCan}/></div>
+      </div>
+    </div>
+  )
+}
+
+=== lib/tf-init.ts ===
+'use client'
+import * as tf from '@tensorflow/tfjs-core'
+import '@tensorflow/tfjs-backend-webgl'
+import '@tensorflow/tfjs-backend-wasm'
+import * as tfwasm from '@tensorflow/tfjs-backend-wasm'
+
+export async function initTF(prefer:'webgl'|'wasm'='webgl'){
+  tfwasm.setWasmPaths('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.20.0/wasm-out/')
+  async function tryBackend(b:'webgl'|'wasm'){
+    try { await tf.setBackend(b); await tf.ready(); await tf.backend(); return b } catch { return null }
+  }
+  const order = prefer==='webgl' ? ['webgl','wasm'] as const : ['wasm','webgl'] as const
+  for(const b of order){ const ok = await tryBackend(b as any); if (ok) return ok }
+  throw new Error('No TFJS backend available.')
+}
+
+=== lib/analyzer.ts ===
+'use client'
+export type KP = { name:string; x:number; y:number; score?:number }
+export type Frame = {
+  tMs:number
+  centerHip:{x:number,y:number}
+  centerSh:{x:number,y:number}
+  head:{x:number,y:number}
+  leadWrist:{x?:number,y?:number}
+  hipRot:number; shRot:number; xFactor:number
+  lkAngle:number; rkAngle:number; spineAng:number
+}
+export type Fault = { title:string; severity:'warn'|'bad'; timeMs:number; phase:string; detail:string; drills?:{name:string;tip:string}[] }
+export type Analysis = { frames:Frame[]; events:{address:any,top:any,impact:any}; faults:Fault[]; summary:{frames:number,fps:number,tempo:{backMs:number,downMs:number,ratio:number}, xFactorDeg:number} }
+
+function get(p:KP[], name:string){ return p.find(k=>k.name===name) as KP|undefined }
+function angle(a?:KP,b?:KP,c?:KP){ if(!a||!b||!c) return 0; const v1x=a.x-b.x,v1y=a.y-b.y,v2x=c.x-b.x,v2y=c.y-b.y; const dot=v1x*v2x+v1y*v2y,m1=Math.hypot(v1x,v1y),m2=Math.hypot(v2x,v2y); if(!m1||!m2) return 0; return Math.acos(Math.min(1,Math.max(-1,dot/(m1*m2))))*180/Math.PI }
+function rotDeg(a?:KP,b?:KP){ if(!a||!b) return 0; return Math.atan2(a.y-b.y, a.x-b.x)*180/Math.PI }
+
+export function emptyAnalysis():Analysis{ return { frames:[], events:{address:null,top:null,impact:null}, faults:[], summary:{frames:0,fps:0,tempo:{backMs:0,downMs:0,ratio:0}, xFactorDeg:0} } }
+
+export function analyzeFrame(prev:Analysis, pose:any, tMs:number):Analysis{
+  const p:KP[] = pose?.keypoints || []
+  if (!p.length) return prev
+  const lh=get(p,'left_hip'), rh=get(p,'right_hip'), ls=get(p,'left_shoulder'), rs=get(p,'right_shoulder')
+  const lw=get(p,'left_wrist'), rw=get(p,'right_wrist'), lk=get(p,'left_knee'), rk=get(p,'right_knee'), la=get(p,'left_ankle'), ra=get(p,'right_ankle'), nose=get(p,'nose')
+  const centerHipX=((lh?.x??0)+(rh?.x??0))/2, centerHipY=((lh?.y??0)+(rh?.y??0))/2
+  const centerShX=((ls?.x??0)+(rs?.x??0))/2, centerShY=((ls?.y??0)+(rs?.y??0))/2
+  const leadW = (lw && lw.y!=null) ? lw : rw
+  const hipRot = rotDeg(lh, rh), shRot = rotDeg(ls, rs), xFactor = shRot - hipRot
+  const lkAngle = angle(la, lk, lh), rkAngle = angle(ra, rk, rh)
+  const spineAng = Math.atan2(centerShX-centerHipX, centerShY-centerHipY) * 180/Math.PI
+
+  const f:Frame = {
+    tMs,
+    centerHip:{x:centerHipX,y:centerHipY},
+    centerSh:{x:centerShX,y:centerShY},
+    head:{x:(nose?.x ?? centerShX), y:(nose?.y ?? centerShY)},
+    leadWrist:{x:leadW?.x, y:leadW?.y},
+    hipRot, shRot, xFactor, lkAngle, rkAngle, spineAng
+  }
+
+  return detectPhases(prev,f)
+}
+
+function detectPhases(prev:Analysis, f:Frame):Analysis{
+  const frames = prev.frames ? [...prev.frames, f] : [f]
+  const t = f.tMs
+  let events = prev.events || { address:null, top:null, impact:null }
+
+  if (!events.address && (t - frames[0].tMs) > 200) events.address = { tMs: t-200, idx: Math.max(0, frames.length-2) }
+
+  if (!events.top && frames.length>6){
+    const dt = frames.at(-1)!.tMs - frames.at(-2)!.tMs
+    const vy = dt>0 ? ((frames.at(-1)!.leadWrist.y ?? 0) - (frames.at(-2)!.leadWrist.y ?? 0))/dt : 0
+    const minLeadY = Math.min(...frames.slice(0,Math.min(frames.length,12)).map(fr=>fr.leadWrist.y ?? 9e9))
+    const rose = (frames.at(-1)!.leadWrist.y ?? 0) < (minLeadY - 15)
+    if (rose && vy > 0) events.top = { tMs: t, idx: frames.length-1 }
+  }
+
+  if (events.top && !events.impact && frames.length>8){
+    const hip = f.centerHip
+    const d = Math.hypot((f.leadWrist.x! - hip.x),(f.leadWrist.y! - hip.y))
+    const window = frames.slice(-8).map(fr => Math.hypot((fr.leadWrist.x! - hip.x),(fr.leadWrist.y! - hip.y)))
+    if (d === Math.min(...window) && (t - events.top.tMs) > 120) events.impact = { tMs: t, idx: frames.length-1 }
+  }
+
+  const summary = prev.summary || { frames:0, fps:0, tempo:{backMs:0,downMs:0,ratio:0}, xFactorDeg:0 }
+  if (events.address && events.top) summary.tempo.backMs = Math.max(0, events.top.tMs - events.address.tMs)
+  if (events.top && events.impact){
+    summary.tempo.downMs = Math.max(0, events.impact.tMs - events.top.tMs)
+    summary.tempo.ratio = summary.tempo.backMs && summary.tempo.downMs ? (summary.tempo.backMs / summary.tempo.downMs) : 0
+  }
+  if (events.top) summary.xFactorDeg = frames[events.top.idx]?.xFactor ?? 0
+
+  const faults:Fault[] = []
+  // Early extension
+  if (events.top){
+    const kTop = frames[events.top.idx], kImp = events.impact ? frames[events.impact.idx] : frames.at(-1)!
+    const dK = ((kImp.lkAngle+kImp.rkAngle)/2) - ((kTop.lkAngle+kTop.rkAngle)/2)
+    if (dK > 12) faults.push(fault('Early Extension','bad',kImp.tMs,'Downswing',`Knees straightened ~${Math.round(dK)}° from top → impact.`,drillsEarlyExtension()))
+  }
+  // Loss of posture
+  if (events.address){
+    const sAddr = frames[events.address.idx]?.spineAng ?? 0
+    const sImp  = events.impact ? frames[events.impact.idx]?.spineAng ?? sAddr : frames.at(-1)!.spineAng
+    const dS = sImp - sAddr
+    if (Math.abs(dS) > 10) faults.push(fault('Loss of Posture','warn',events.impact?.tMs ?? frames.at(-1)!.tMs,'Impact',`Spine tilt changed ~${Math.round(dS)}°.`,drillsPosture()))
+  }
+  // OTT proxy
+  if (events.top && frames.length>events.top.idx+6){
+    const a = frames[events.top.idx], b = frames[Math.min(frames.length-1, events.top.idx+6)]
+    const pathAng = Math.atan2(b.leadWrist.y! - a.leadWrist.y!, b.leadWrist.x! - a.leadWrist.x!)*180/Math.PI
+    const diff = pathAng - a.shRot
+    if (Math.abs(diff) > 35) faults.push(fault('Over-the-Top (proxy)','warn',b.tMs,'Downswing',`Lead hand path deviates ~${Math.round(diff)}° vs shoulder line.`,drillsOTT()))
+  }
+  // X-factor range
+  if (events.top){
+    const xf = summary.xFactorDeg
+    if (xf < 15) faults.push(fault('Limited X-Factor','warn',events.top.tMs,'Top',`Separation only ${Math.round(xf)}° (power leak).`,drillsXFactorLow()))
+    if (xf > 60) faults.push(fault('Over-torque (X-Factor)','warn',events.top.tMs,'Top',`Separation ~${Math.round(xf)}°; may hurt consistency.`,drillsXFactorHigh()))
+  }
+  // Head sway proxy
+  if (frames.length>6){
+    const xs = frames.map(fr=>fr.head.x), sway = Math.max(...xs)-Math.min(...xs)
+    if (sway > 30) faults.push(fault('Excess Head Sway','warn',events.top?.tMs ?? frames.at(-1)!.tMs,'Backswing',`Head moved laterally ~${Math.round(sway)}px; keep it steadier.`,drillsHeadSway()))
+  }
+
+  const dedup:Record<string,Fault> = {}
+  for (const f of faults){ const cur=dedup[f.title]; if(!cur || (cur.severity==='warn' && f.severity==='bad')) dedup[f.title]=f }
+
+  summary.frames = frames.length
+  if (frames.length>10){ const dur = frames.at(-1)!.tMs - frames.at(0)!.tMs; summary.fps = dur>0 ? Math.round((frames.length/(dur/1000))*10)/10 : 0 }
+  return { frames, events, faults:Object.values(dedup), summary }
+}
+
+function fault(title:string,severity:'warn'|'bad',timeMs:number,phase:string,detail:string,drills?:{name:string;tip:string}[]):Fault{ return { title, severity, timeMs, phase, detail, drills } }
+function drillsEarlyExtension(){ return [
+  { name:'Chair/Wall Butt Drill', tip:'Keep rear on wall from address through impact.' },
+  { name:'Pump Drill (Half Swings)', tip:'Pause at top; small pumps while keeping knee flex.' }
+]}
+function drillsPosture(){ return [
+  { name:'Club Across Chest Tilt', tip:'Lead shoulder down toward ball; maintain tilt.' },
+  { name:'Spine Rod Reference', tip:'Keep distance to “rod” consistent.' }
+]}
+function drillsOTT(){ return [
+  { name:'Underhand Toss', tip:'From top, toss to right field (RH) to feel inside path.' },
+  { name:'Headcover Outside Line', tip:'Place headcover outside ball line; avoid it on downswing.' }
+]}
+function drillsXFactorLow(){ return [
+  { name:'Shoulders Turn, Hips Quiet', tip:'Cross arms; turn shoulders to ~90° with quieter hips.' }
+]}
+function drillsXFactorHigh(){ return [
+  { name:'Shorter Backswing', tip:'Stop when lead arm is parallel; keep tempo smooth.' }
+]}
+function drillsHeadSway(){ return [
+  { name:'Feet Together Swings', tip:'Half swings feet together for centered turn.' }
+]}
