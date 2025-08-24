@@ -1,0 +1,76 @@
+== START DIAG Sun Aug 24 16:22:59 UTC 2025 ==
+== Shell & dir ==
+SHELL: /bin/bash
+/workspaces/Swingalzyemodel2-
+total 56
+drwxrwxrwx+ 3 codespace root       4096 Aug 24 16:22 .
+drwxr-xrwx+ 5 codespace root       4096 Aug 24 16:04 ..
+drwxrwxrwx+ 8 codespace root       4096 Aug 24 16:20 .git
+-rw-rw-rw-  1 codespace root       1068 Aug 24 16:04 LICENSE
+-rw-rw-rw-  1 codespace root         40 Aug 24 16:04 README.md
+-rw-rw-rw-  1 codespace codespace   111 Aug 24 16:22 diag.log
+-rw-rw-rw-  1 codespace root      30822 Aug 24 16:04 json
+== Git ==
+true
+git repo ✓
+main
+origin	https://github.com/herbsubin64/Swingalzyemodel2- (fetch)
+origin	https://github.com/herbsubin64/Swingalzyemodel2- (push)
+?? diag.log
+== Node/NPM ==
+v22.17.0
+9.8.1
+== Project layout ==
+  app/ missing ❌
+  components/ missing ❌
+  lib/ missing ❌
+  public/ missing ❌
+  app/layout.js missing ❌
+  app/page.tsx missing ❌
+  app/compare/page.tsx missing ❌
+  next.config.js missing ❌
+  package.json missing ❌
+== package.json snippet ==
+node:internal/modules/cjs/loader:1404
+  throw err;
+  ^
+
+Error: Cannot find module './package.json'
+Require stack:
+- /workspaces/Swingalzyemodel2-/[eval]
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    at Function._load (node:internal/modules/cjs/loader:1211:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    at Module.require (node:internal/modules/cjs/loader:1487:12)
+    at require (node:internal/modules/helpers:135:16)
+    at [eval]:1:7
+    at runScriptInThisContext (node:internal/vm:209:10) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/workspaces/Swingalzyemodel2-/[eval]' ]
+}
+
+Node.js v22.17.0
+== Install deps (capturing errors) ==
+npm ERR! code ENOENT
+npm ERR! syscall open
+npm ERR! path /workspaces/Swingalzyemodel2-/package.json
+npm ERR! errno -2
+npm ERR! enoent ENOENT: no such file or directory, open '/workspaces/Swingalzyemodel2-/package.json'
+npm ERR! enoent This is related to npm not being able to find a file.
+npm ERR! enoent 
+
+npm ERR! A complete log of this run can be found in: /home/codespace/.npm/_logs/2025-08-24T16_23_01_790Z-debug-0.log
+== Build (capturing errors) ==
+npm ERR! code ENOENT
+npm ERR! syscall open
+npm ERR! path /workspaces/Swingalzyemodel2-/package.json
+npm ERR! errno -2
+npm ERR! enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/workspaces/Swingalzyemodel2-/package.json'
+npm ERR! enoent This is related to npm not being able to find a file.
+npm ERR! enoent 
+
+npm ERR! A complete log of this run can be found in: /home/codespace/.npm/_logs/2025-08-24T16_23_02_677Z-debug-0.log
+== End DIAG ==
